@@ -41,8 +41,11 @@ Commands:
   analyze <url>                 Brand + competitor + audience research
   strategy                      Build 30/60/90 strategy (uses active project)
   content                       Content research + pillars + calendar + copy
+  copy                          Rewrite captions, script, and blog from the calendar
   creative                      Creative platform + image prompts
+  analytics                     Measurement plan + KPI dashboard
   cro [url]                     Conversion-rate-optimization audit
+  summary                       Re-synthesize the executive summary
   run <url>                     FULL pipeline: research → strategy → content →
                                 creative → CRO → executive summary
   memory <kind>                 Print stored memory (brand|audience|competitors|
@@ -164,6 +167,36 @@ async function main() {
       log.banner(`MarketingOS — CRO ${store.project.name}`);
       await runTasks(store, `Audit conversion for ${store.project.name}`, [
         { type: "cro.audit", goal: "CRO audit", assignedAgent: "cro", priority: 10, input: { url } },
+      ]);
+      done(store);
+      break;
+    }
+
+    case "analytics": {
+      const store = await openActive();
+      log.banner(`MarketingOS — analytics ${store.project.name}`);
+      await runTasks(store, `Build the measurement plan for ${store.project.name}`, [
+        { type: "analytics.plan", goal: "Measurement plan", assignedAgent: "analytics", priority: 10 },
+      ]);
+      done(store);
+      break;
+    }
+
+    case "copy": {
+      const store = await openActive();
+      log.banner(`MarketingOS — copy ${store.project.name}`);
+      await runTasks(store, `Write sample copy for ${store.project.name}`, [
+        { type: "copy.write", goal: "Write captions, a script, and a blog post", assignedAgent: "copywriting", priority: 10 },
+      ]);
+      done(store);
+      break;
+    }
+
+    case "summary": {
+      const store = await openActive();
+      log.banner(`MarketingOS — summary ${store.project.name}`);
+      await runTasks(store, `Synthesize the executive summary for ${store.project.name}`, [
+        { type: "cmo.synthesize", goal: "Synthesize executive summary", assignedAgent: "cmo", priority: 10 },
       ]);
       done(store);
       break;

@@ -54,7 +54,14 @@ export async function complete(prompt: string, opts: CompleteOpts = {}): Promise
   try {
     for await (const message of query({ prompt, options })) {
       if (message.type === "result") {
-        if (message.subtype === "success") return message.result.trim();
+        if (message.subtype === "success") {
+          const text = message.result.trim();
+          // The subscription can surface a usage/session-limit notice as ordinary
+          // assistant text on a "success" result. Never let that get parsed or
+          // persisted as a real answer — fail loudly so callers can retry/stop.
+          if (LIMIT_NOTICE.test(text)) throw new LLMLimitError(text);
+          return text;
+        }
         // Non-success result → surface the error text.
         throw new Error(
           `Claude Agent SDK returned "${message.subtype}"` +
@@ -81,22 +88,30 @@ export async function completeJSON<S extends z.ZodTypeAny>(
   const jsonSchema = JSON.stringify(zodToJsonSchema(schema, { target: "jsonSchema7" }));
   const base = `${prompt}
 
-Respond with ONLY a single JSON object that conforms to this JSON Schema. Do not
-include any prose, explanation, or Markdown code fences — output raw JSON only.
+Respond with ONLY a single JSON object that conforms to this JSON Schema. Output
+raw JSON — no prose, no explanation, no Markdown code fences.
+
+Match every field's type EXACTLY:
+- A field typed "array" must be a JSON array using square brackets [ ... ].
+  NEVER represent a list as an object keyed by name.
+- Include every required field; use [] or "" rather than omitting a field.
 
 JSON Schema:
 ${jsonSchema}`;
 
+  const MAX_ATTEMPTS = 4;
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const reply = await complete(
       attempt === 0
         ? base
         : `${base}
 
-Your previous response could not be parsed/validated. Error:
+Your previous response was INVALID. Validation error:
 ${lastErr instanceof Error ? lastErr.message : String(lastErr)}
-Return corrected raw JSON only.`,
+
+Fix exactly that problem and return corrected raw JSON only. Remember: array-typed
+fields must be JSON arrays [ ... ], never objects.`,
       opts
     );
 
@@ -108,7 +123,7 @@ Return corrected raw JSON only.`,
     }
   }
   throw new Error(
-    `completeJSON: model did not return valid JSON for the schema after 2 attempts. ` +
+    `completeJSON: model did not return valid JSON for the schema after ${MAX_ATTEMPTS} attempts. ` +
       `Last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
   );
 }
@@ -131,6 +146,16 @@ function wrapSdkError(err: any): Error {
     return new LLMNotConfiguredError(msg);
   }
   return err instanceof Error ? err : new Error(msg);
+}
+
+/** Matches subscription usage/session/rate-limit notices returned as text. */
+const LIMIT_NOTICE = /^(you've|you have) (hit|reached) your (session|usage|rate|weekly|daily) limit/i;
+
+export class LLMLimitError extends Error {
+  constructor(detail: string) {
+    super(`Claude usage/session limit reached: ${detail}`);
+    this.name = "LLMLimitError";
+  }
 }
 
 export class LLMNotConfiguredError extends Error {
