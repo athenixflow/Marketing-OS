@@ -14,6 +14,7 @@ No database. No cloud. **No API key** — it runs on your Claude Code subscripti
 ```bash
 # 1. Install dependencies
 npm install --legacy-peer-deps
+npx playwright install chromium   # one-time: headless browser for full-page crawling
 
 # 2. Make sure you're logged into Claude Code
 #    (you already are if you use Claude Code). MarketingOS uses that same login
@@ -129,9 +130,11 @@ data/                    persisted memory + generated assets (gitignored)
 
 ## Notes
 
-- **Website crawling** uses plain HTTP + HTML parsing (no headless browser), so
-  JavaScript-only single-page apps may yield partial content — the crawler flags
-  this in the log when it happens.
+- **Website crawling** renders each page in headless Chromium (Playwright), so
+  JavaScript-built sites (React/Vue/Wix/Framer/…) are scraped fully. The browser is
+  installed once with `npx playwright install chromium`. If the browser can't launch,
+  the crawler automatically falls back to plain HTTP fetch. Set `CRAWL_RENDER=0` to
+  force the fast HTTP-only path.
 - **Image generation** outputs ready-to-use prompts rather than calling an image
   model, so no extra API key is needed. You can wire an image model into the
   Image Generation Agent later.
