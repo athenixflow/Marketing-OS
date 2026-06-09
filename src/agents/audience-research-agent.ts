@@ -24,40 +24,54 @@ const audienceSchema = z.object({
       buyingTriggers: z.array(z.string()),
     })
   ),
+  sources: z.array(z.object({ title: z.string(), url: z.string() })),
+  assumptions: z.array(z.string()),
+  confidence: z.enum(["high", "medium", "low"]),
 });
 
-/** Builds audience segments + buyer personas from the brand profile. */
+/** Builds audience segments + personas, grounded in real market/demographic evidence. */
 export class AudienceResearchAgent extends BaseAgent {
   readonly name: AgentName = "audience-research";
   readonly title = "Audience Research Agent";
   readonly tier: ModelTier = "sonnet";
+  readonly grounded = true;
   readonly systemPrompt =
-    "You are the Audience Research Agent. You define precise customer segments and personas " +
-    "with their pains, desires, objections, and preferred channels.";
+    "You are an audience research analyst. You define precise customer segments and personas " +
+    "grounded in real demographic, behavioral, and category evidence — with sources.";
+  readonly rubric =
+    `- Segments are distinct, sized or qualified, and specific to this category.\n` +
+    `- Pains/desires/objections are concrete and believable, not generic.\n` +
+    `- Personas are actionable for targeting and messaging.\n` +
+    `- Claims are grounded in cited evidence where possible; assumptions are disclosed.`;
 
   protected async handle(_task: Task, ctx: SharedContext): Promise<AgentResult> {
     const brand = await ctx.memory.get<BrandData>("brand");
 
-    const result = await this.thinkJSON(
-      `Define the target audience for this brand.
-
-BRAND: ${brand.name} — ${brand.description}
+    const { data, sources, grounded } = await this.researchJSON(
+      `Research the target audience for ${brand.name} — ${brand.description}.
 PRODUCTS/SERVICES: ${[...brand.products, ...brand.services].map((x) => x.name).join(", ") || "n/a"}
 POSITIONING: ${brand.voice?.positioning ?? "n/a"}
-
-Produce 2-4 distinct audience segments (with pain points, desires, objections, channels) and
-2-3 concrete buyer personas (demographic, psychographic, buying triggers).`,
+Find who actually buys this category: demographics, behaviors, motivations, where they spend attention.`,
+      `Define 2-4 distinct audience segments (pains, desires, objections, channels) and 2-3
+buyer personas (demographic, psychographic, buying triggers) for ${brand.name}. Populate
+"sources" from the research; set confidence honestly.`,
       audienceSchema,
-      { temperature: 0.5 }
+      { temperature: 0.4, maxTokens: 5000 }
     );
 
-    const data: AudienceData = { segments: result.segments, personas: result.personas };
-    await ctx.memory.set("audience", data);
-    ctx.set("audience", data);
+    const result: AudienceData = {
+      segments: data.segments,
+      personas: data.personas,
+      sources: data.sources?.length ? data.sources : sources,
+      assumptions: data.assumptions,
+      confidence: grounded ? data.confidence : "low",
+    };
+    await ctx.memory.set("audience", result);
+    ctx.set("audience", result);
 
     return {
-      output: data,
-      summary: `Defined ${result.segments.length} segments and ${result.personas.length} personas.`,
+      output: result,
+      summary: `Defined ${data.segments.length} segments, ${data.personas.length} personas, ${result.sources?.length ?? 0} sources (${result.confidence} confidence).`,
     };
   }
 }

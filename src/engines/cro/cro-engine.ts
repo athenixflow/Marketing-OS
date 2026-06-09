@@ -1,18 +1,16 @@
 import { z } from "zod";
-import { completeJSON } from "../../core/llm.js";
 import type { ScrapedPage } from "../brand-intelligence/scraper.js";
 import { buildCorpus } from "../brand-intelligence/extractor.js";
 import type { BrandData } from "../../memory/schema.js";
 
 /**
  * Conversion Rate Optimization engine: audits a website's messaging, CTAs, UX
- * signals, and funnel, then returns scored, prioritized recommendations.
- *
- * Since we crawl HTML (not render), the audit focuses on content/messaging/CTA
- * structure and information architecture rather than pixel-level visual design.
+ * signals, and funnel, then returns scored, prioritized recommendations. Pages
+ * are fully rendered (headless Chromium), so the audit sees real content. The
+ * agent runs this schema/prompt through deepThinkJSON (draft → critique → revise).
  */
 
-const croSchema = z.object({
+export const croSchema = z.object({
   overallScore: z.number().min(0).max(100).describe("Overall conversion-readiness score"),
   websiteAudit: z.array(finding()).describe("Messaging, clarity, value-prop findings"),
   ctaAudit: z.array(finding()).describe("CTA presence, clarity, placement findings"),
@@ -41,31 +39,22 @@ function finding() {
 
 export type CROAudit = z.infer<typeof croSchema>;
 
-export async function auditConversion(pages: ScrapedPage[], brand: BrandData): Promise<CROAudit> {
+export function croPrompt(pages: ScrapedPage[], brand: BrandData): string {
   const corpus = buildCorpus(pages, 11000);
   const allCtas = [...new Set(pages.flatMap((p) => p.ctaCandidates))].join(", ");
 
-  const prompt = `Perform a conversion rate optimization (CRO) audit of this website.
+  return `Perform a conversion rate optimization (CRO) audit of this website.
 
 BRAND: ${brand.name} — ${brand.description}
 DETECTED CTAS: ${allCtas || "none detected"}
 
-WEBSITE CONTENT (crawled HTML, no JS render):
+WEBSITE CONTENT (fully rendered):
 ${corpus}
 
 Audit four areas — overall website/messaging, CTAs, UX/information architecture, and the
 conversion funnel. Give an overall conversion-readiness score (0-100), specific findings with
 severity, a narrative on the biggest conversion blockers, and a prioritized list of
 recommendations tagged by impact and effort. Be concrete and reference actual page elements.`;
-
-  return completeJSON(prompt, croSchema, {
-    tier: "opus",
-    system:
-      "You are a CRO specialist who audits sites for conversion blockers and returns " +
-      "prioritized, evidence-based recommendations.",
-    temperature: 0.4,
-    maxTokens: 6000,
-  });
 }
 
 /** Render a CRO audit as a readable Markdown report. */

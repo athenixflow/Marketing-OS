@@ -43,14 +43,92 @@ export interface CompleteOpts {
 
 /** Free-form text completion via a single Agent SDK turn (no tools). */
 export async function complete(prompt: string, opts: CompleteOpts = {}): Promise<string> {
-  const options: Options = {
+  return runQuery(prompt, {
     model: MODEL_IDS[opts.tier ?? "sonnet"],
     systemPrompt: opts.system,
     maxTurns: 1,
     tools: [], // pure text generation — no file/bash/web access
     permissionMode: "bypassPermissions",
-  };
+  });
+}
 
+export interface Source {
+  title: string;
+  url: string;
+}
+
+export interface ResearchResult {
+  /** The findings narrative produced from real web research. */
+  text: string;
+  /** Citations parsed from the model's SOURCES: block. */
+  sources: Source[];
+  /** False when web tools were unavailable and we fell back to model-only. */
+  grounded: boolean;
+}
+
+/** Whether web grounding is enabled (default on; RESEARCH_WEB=0 disables). */
+export function researchEnabled(): boolean {
+  return !/^(0|false|no)$/i.test(process.env.RESEARCH_WEB ?? "1");
+}
+
+/**
+ * Web-grounded research: lets the model use WebSearch/WebFetch to gather real,
+ * current evidence, then return findings followed by a SOURCES: list. Falls back
+ * to an ungrounded completion (empty sources, grounded=false) if web tools are
+ * disabled or unavailable — callers should lower confidence accordingly.
+ */
+export async function research(prompt: string, opts: CompleteOpts = {}): Promise<ResearchResult> {
+  const instruction = `${prompt}
+
+Use web search to gather CURRENT, verifiable evidence. Prefer reputable, primary
+sources. After your findings, end your response with a section formatted exactly:
+
+SOURCES:
+- <title> | <url>
+- <title> | <url>
+
+Only list sources you actually used. If you could not verify a claim, say so.`;
+
+  if (researchEnabled()) {
+    try {
+      const text = await runQuery(instruction, {
+        model: MODEL_IDS[opts.tier ?? "sonnet"],
+        systemPrompt: opts.system,
+        maxTurns: 8,
+        tools: ["WebSearch", "WebFetch"],
+        allowedTools: ["WebSearch", "WebFetch"],
+        permissionMode: "bypassPermissions",
+      });
+      return { text, sources: parseSources(text), grounded: true };
+    } catch (err) {
+      if (err instanceof LLMLimitError) throw err; // limits must surface
+      // Web tools unavailable/blocked — degrade gracefully to model-only.
+    }
+  }
+
+  const text = await complete(prompt, opts);
+  return { text, sources: [], grounded: false };
+}
+
+/** Free-form critique of a draft against a rubric (used by deepThinkJSON). */
+export function critique(draft: string, rubric: string, opts: CompleteOpts = {}): Promise<string> {
+  return complete(
+    `Critically review the DRAFT below against the QUALITY RUBRIC. Be a demanding
+institutional reviewer: name concrete weaknesses, vague or unsupported claims,
+missing rigor, and anything that wouldn't survive a partner/board review. Output a
+terse, numbered list of specific fixes — no praise, no preamble.
+
+QUALITY RUBRIC:
+${rubric}
+
+DRAFT:
+${draft}`,
+    { ...opts, temperature: 0.3 }
+  );
+}
+
+/** Shared Agent SDK call: streams to the terminal result message. */
+async function runQuery(prompt: string, options: Options): Promise<string> {
   try {
     for await (const message of query({ prompt, options })) {
       if (message.type === "result") {
@@ -73,6 +151,19 @@ export async function complete(prompt: string, opts: CompleteOpts = {}): Promise
   } catch (err: any) {
     throw wrapSdkError(err);
   }
+}
+
+/** Extract "- title | url" lines from the model's SOURCES: block. */
+function parseSources(text: string): Source[] {
+  const idx = text.search(/SOURCES:/i);
+  if (idx === -1) return [];
+  const block = text.slice(idx);
+  const sources: Source[] = [];
+  for (const line of block.split(/\r?\n/)) {
+    const m = line.match(/^\s*[-*]\s*(.+?)\s*\|\s*(https?:\/\/\S+)/);
+    if (m) sources.push({ title: m[1].trim(), url: m[2].trim() });
+  }
+  return sources;
 }
 
 /**

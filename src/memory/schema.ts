@@ -6,11 +6,26 @@
 
 export type MemoryKind =
   | "brand"
+  | "market"
   | "audience"
   | "competitors"
   | "strategy"
+  | "financials"
   | "content-calendar"
   | "campaigns";
+
+/** A cited source used to ground a claim. */
+export interface Source {
+  title: string;
+  url: string;
+}
+
+/** Mixed into research-bearing records for institutional traceability. */
+export interface Provenance {
+  sources: Source[];
+  assumptions: string[];
+  confidence: "high" | "medium" | "low";
+}
 
 export interface BrandData {
   url?: string;
@@ -31,7 +46,19 @@ export interface BrandData {
   updatedAt?: string;
 }
 
-export interface AudienceData {
+/** Market sizing + trends + benchmarks, web-sourced. */
+export interface MarketData extends Partial<Provenance> {
+  category?: string;
+  tam?: string;
+  sam?: string;
+  som?: string;
+  growthRate?: string;
+  trends: Array<{ trend: string; implication: string }>;
+  benchmarks: Array<{ metric: string; value: string; context: string }>;
+  updatedAt?: string;
+}
+
+export interface AudienceData extends Partial<Provenance> {
   segments: Array<{
     name: string;
     description: string;
@@ -49,7 +76,7 @@ export interface AudienceData {
   updatedAt?: string;
 }
 
-export interface CompetitorData {
+export interface CompetitorData extends Partial<Provenance> {
   competitors: Array<{
     name: string;
     url?: string;
@@ -62,6 +89,13 @@ export interface CompetitorData {
   updatedAt?: string;
 }
 
+export interface RiskItem {
+  risk: string;
+  likelihood: "high" | "medium" | "low";
+  impact: "high" | "medium" | "low";
+  mitigation: string;
+}
+
 export interface StrategyData {
   positioning?: string;
   growthStrategy?: string;
@@ -70,6 +104,8 @@ export interface StrategyData {
   plan90?: PhasePlan;
   channels?: Array<{ channel: string; rationale: string; tactics: string[] }>;
   kpis?: Array<{ metric: string; target: string; cadence: string }>;
+  risks?: RiskItem[];
+  assumptions?: string[];
   updatedAt?: string;
 }
 
@@ -78,6 +114,22 @@ export interface PhasePlan {
   objectives: string[];
   initiatives: string[];
   milestones: string[];
+}
+
+/** Unit economics + budget + projection, with stated assumptions + sensitivity. */
+export interface FinancialData extends Partial<Provenance> {
+  unitEconomics?: {
+    estimatedAOV: string;
+    targetCAC: string;
+    estimatedLTV: string;
+    ltvToCac: string;
+    paybackMonths: string;
+    grossMargin: string;
+  };
+  budgetAllocation: Array<{ channel: string; monthlyBudget: string; rationale: string }>;
+  projection: Array<{ period: string; spend: string; revenue: string; roas: string }>;
+  sensitivity: Array<{ scenario: string; assumption: string; outcome: string }>;
+  updatedAt?: string;
 }
 
 export interface ContentCalendarData {
@@ -109,9 +161,11 @@ export interface CampaignData {
 /** Default empty value for each memory kind. */
 export const EMPTY: Record<MemoryKind, unknown> = {
   brand: { products: [], services: [], offers: [], ctas: [] } as BrandData,
-  audience: { segments: [], personas: [] } as AudienceData,
-  competitors: { competitors: [] } as CompetitorData,
-  strategy: {} as StrategyData,
+  market: { trends: [], benchmarks: [], sources: [], assumptions: [], confidence: "low" } as MarketData,
+  audience: { segments: [], personas: [], sources: [], assumptions: [], confidence: "low" } as AudienceData,
+  competitors: { competitors: [], sources: [], assumptions: [], confidence: "low" } as CompetitorData,
+  strategy: { risks: [], assumptions: [] } as StrategyData,
+  financials: { budgetAllocation: [], projection: [], sensitivity: [], sources: [], assumptions: [], confidence: "low" } as FinancialData,
   "content-calendar": { pillars: [], trends: [], posts: [] } as ContentCalendarData,
   campaigns: { campaigns: [] } as CampaignData,
 };

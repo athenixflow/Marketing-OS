@@ -21,6 +21,17 @@ export class BrandIntelligenceAgent extends BaseAgent {
     const url = normalizeUrl(String(task.input?.url ?? ctx.memory.project.url ?? ""));
 
     const result = await crawl(url);
+
+    // Dead-URL / empty-crawl guard: never let the pipeline hallucinate a brand
+    // from nothing. Abort the run with a clear, actionable error instead.
+    const totalText = result.pages.reduce((n, p) => n + p.textLength, 0);
+    if (result.pages.length === 0 || totalText < 200) {
+      throw new Error(
+        `Could not retrieve usable content from ${url} ` +
+          `(${result.pages.length} pages, ${totalText} chars). ` +
+          `Check the URL is correct and reachable (try without/with "www.", or the exact address).`
+      );
+    }
     if (result.lowYield) {
       await ctx.memory.log({
         level: "warn",
@@ -28,8 +39,10 @@ export class BrandIntelligenceAgent extends BaseAgent {
         message: "Low text yield from crawl; brand data may be partial (JS-rendered site).",
       });
     }
-    // Share pages so the CRO agent can reuse them without re-crawling.
+    // Share pages so the CRO agent can reuse them without re-crawling — both
+    // in-process (blackboard) and on disk (so staged `cro`/re-runs skip rendering).
     ctx.set("crawledPages", result.pages);
+    await ctx.memory.recordAsset("crawl-pages.json", JSON.stringify(result.pages));
 
     const [extraction, voice] = await Promise.all([
       extractBrandEntities(result.pages),

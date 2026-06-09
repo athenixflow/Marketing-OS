@@ -17,9 +17,11 @@ export class TaskQueue {
   /** type-prefix -> default agent. Most specific (longest) match wins. */
   static readonly ROUTES: Array<{ prefix: string; agent: AgentName }> = [
     { prefix: "brand.", agent: "brand-intelligence" },
+    { prefix: "market.", agent: "market-research" },
     { prefix: "competitor.", agent: "competitor-research" },
     { prefix: "audience.", agent: "audience-research" },
     { prefix: "strategy.", agent: "marketing-strategy" },
+    { prefix: "finance.", agent: "financial" },
     { prefix: "funnel.", agent: "funnel-strategy" },
     { prefix: "seo.", agent: "seo-strategy" },
     { prefix: "content.research", agent: "content-research" },
@@ -29,6 +31,8 @@ export class TaskQueue {
     { prefix: "image.", agent: "image-generation" },
     { prefix: "cro.", agent: "cro" },
     { prefix: "analytics.", agent: "analytics" },
+    { prefix: "qa.", agent: "qa" },
+    { prefix: "report.", agent: "report-builder" },
   ];
 
   /** Resolve which agent should own a task type. */

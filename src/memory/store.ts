@@ -133,6 +133,11 @@ export class MemoryStore {
     return file;
   }
 
+  /** Read a previously written JSON asset, or a fallback if it's missing. */
+  async readAssetJson<T>(name: string, fallback: T): Promise<T> {
+    return readJson<T>(path.join(this.dir, "assets", name), fallback);
+  }
+
   /** Append one structured event to the project run-log (JSONL audit trail). */
   async log(event: Omit<LogEvent, "at">): Promise<void> {
     const full: LogEvent = { ...event, at: new Date().toISOString() };

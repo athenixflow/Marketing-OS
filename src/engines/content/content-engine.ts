@@ -7,7 +7,7 @@ import type { BrandData, AudienceData, StrategyData, ContentCalendarData } from 
  * plus generators for individual assets (captions, scripts, blog posts).
  */
 
-const planSchema = z.object({
+export const planSchema = z.object({
   trends: z.array(z.string()).describe("Relevant, current content trends for this niche"),
   pillars: z.array(
     z.object({
@@ -39,9 +39,9 @@ export interface ContentInputs {
   startDate: string; // YYYY-MM-DD
 }
 
-export async function generateContentPlan(inputs: ContentInputs): Promise<ContentPlan> {
+export function contentPlanPrompt(inputs: ContentInputs): string {
   const channels = inputs.strategy.channels?.map((c) => c.channel).join(", ") || "Instagram, LinkedIn, Blog, Email";
-  const prompt = `Create a content plan for the brand below.
+  return `Create a content plan for the brand below.
 
 BRAND: ${inputs.brand.name} — ${inputs.brand.description}
 VOICE: ${inputs.brand.voice?.summary ?? "n/a"}
@@ -52,15 +52,6 @@ CALENDAR START DATE: ${inputs.startDate}
 Identify current content trends, define content pillars, and build a 2-week calendar starting
 on the start date with multiple posts per week mapped to pillars and channels. Each post needs
 a scroll-stopping hook and a brief with its CTA.`;
-
-  return completeJSON(prompt, planSchema, {
-    tier: "sonnet",
-    system:
-      "You are a content strategist who builds high-performing, on-brand content calendars " +
-      "tailored to each channel's native format.",
-    temperature: 0.7,
-    maxTokens: 6000,
-  });
 }
 
 /** Generate a single social caption from a calendar post brief. */

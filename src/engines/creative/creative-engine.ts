@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { completeJSON } from "../../core/llm.js";
 import type { BrandData, AudienceData, StrategyData } from "../../memory/schema.js";
 
 /**
  * Creative engine: produces a creative brief, visual strategy, design direction,
- * ready-to-use image generation prompts, and campaign asset specs.
+ * ready-to-use image generation prompts, and campaign asset specs. The agent runs
+ * this schema/prompt through deepThinkJSON (draft → critique → revise).
  */
 
-const creativeSchema = z.object({
+export const creativeSchema = z.object({
   brief: z.object({
     bigIdea: z.string(),
     objective: z.string(),
@@ -54,8 +54,8 @@ export interface CreativeInputs {
   campaignFocus: string;
 }
 
-export async function generateCreativePackage(inputs: CreativeInputs): Promise<CreativePackage> {
-  const prompt = `Develop a complete creative package for the campaign below.
+export function creativePrompt(inputs: CreativeInputs): string {
+  return `Develop a complete creative package for the campaign below.
 
 BRAND: ${inputs.brand.name} — ${inputs.brand.description}
 VOICE: ${inputs.brand.voice?.summary ?? "n/a"}
@@ -66,13 +66,4 @@ CAMPAIGN FOCUS: ${inputs.campaignFocus}
 Deliver: a creative brief (big idea, objective, key message, tone, mandatories); a visual
 strategy (mood, color, typography, photography); concrete design direction; 4-6 detailed,
 ready-to-paste text-to-image prompts for hero assets; and a campaign asset list per channel.`;
-
-  return completeJSON(prompt, creativeSchema, {
-    tier: "sonnet",
-    system:
-      "You are an award-winning creative director. You translate strategy into a bold, " +
-      "cohesive creative platform and precise production-ready specs.",
-    temperature: 0.75,
-    maxTokens: 6000,
-  });
 }

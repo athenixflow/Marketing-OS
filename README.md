@@ -36,20 +36,31 @@ Output lands in `data/projects/<site>/` — open the JSON and Markdown files to 
 
 | Agent | Role |
 |-------|------|
-| **CMO** | Plans the work, delegates to specialists, writes the executive summary |
-| Brand Intelligence | Crawls + analyzes the website (products, services, offers, CTAs, voice) |
-| Competitor Research | Maps competitors and finds positioning whitespace |
-| Audience Research | Builds audience segments and buyer personas |
-| Marketing Strategy | 30/60/90-day plan, positioning, channels, KPIs |
+| **CMO** | Plans the work, delegates to specialists, writes the executive directive |
+| Brand Intelligence | Renders + analyzes the website (products, services, offers, CTAs, voice) |
+| **Market Research / Data** | TAM/SAM/SOM, growth, benchmarks — **web-sourced + cited** |
+| Competitor Research | Real competitors + positioning whitespace — **web-sourced + cited** |
+| Audience Research | Segments + buyer personas — **web-sourced + cited** |
+| Marketing Strategy | Positioning, 30/60/90, channels, KPIs, **risk register** |
+| **Financial / Unit-Economics** | CAC/LTV, budget allocation, projection, sensitivity |
 | Funnel Strategy | Full-funnel journey, lead magnets, nurture sequence |
-| SEO Strategy | Keyword clusters by intent, on-page + technical roadmap |
-| Content Research | Trends, topics, and hook angles |
+| SEO Strategy | Keyword clusters by intent — **web-sourced** |
+| Content Research | Current trends, topics, hooks — **web-sourced** |
 | Content Creation | Content pillars + a dated calendar |
 | Copywriting | Captions, video scripts, blog posts |
 | Creative Director | Creative brief, visual strategy, design direction |
 | Image Generation | Ready-to-paste text-to-image prompts |
 | CRO | Website / CTA / UX / funnel audit + recommendations |
 | Analytics | North-star metric, KPI dashboard, experiment backlog |
+| **QA / Managing Director** | Scores deliverables vs a rubric; cross-deliverable consistency review |
+| **Report Builder** | Compiles everything into one board-ready report + sources appendix |
+
+### Institutional-grade by design
+
+- **Web-grounded + cited.** Research agents use live web search and attach sources (`RESEARCH_WEB=0` to disable).
+- **Draft → critique → revise.** Every deliverable is self-critiqued against a rubric and revised before it's saved.
+- **QA gate.** A Managing-Director agent scores the strategy and financials; anything below `QA_THRESHOLD` (default 80) is re-run with required fixes.
+- **Board-ready output.** `report` compiles a single `strategy-report.md` (exec summary → methodology → market → competitive → audience → strategy → 30/60/90 → financials → KPIs → risk register → sources) plus `sources.json`.
 
 ---
 
@@ -57,29 +68,48 @@ Output lands in `data/projects/<site>/` — open the JSON and Markdown files to 
 
 ```bash
 npm run os -- init <url>        # create/select a project + analyze the site
-npm run os -- analyze <url>     # brand + competitor + audience research
-npm run os -- strategy          # 30/60/90 strategy (uses active project)
+npm run os -- analyze <url>     # brand + competitor + audience research (web-grounded)
+npm run os -- market            # market sizing, trends, benchmarks (web-grounded)
+npm run os -- strategy          # market + 30/60/90 strategy + financials + analytics
+npm run os -- financials        # unit economics, budget, projection, sensitivity
 npm run os -- content           # research + pillars + calendar + copy
 npm run os -- creative          # creative platform + image prompts
 npm run os -- cro [url]         # conversion-rate-optimization audit
-npm run os -- run <url>         # FULL pipeline end-to-end
-npm run os -- memory <kind>     # print stored memory (brand, strategy, ...)
+npm run os -- qa                # cross-deliverable consistency review
+npm run os -- report            # compile the board-ready report + sources.json
+npm run os -- run <url>         # FULL institutional pipeline end-to-end
+npm run os -- memory <kind>     # print stored memory (brand, market, strategy, ...)
 npm run os -- projects          # list all projects
-npm run os -- help              # show help
 ```
 
-The single-step commands (`strategy`, `content`, `creative`) operate on the most
-recently used project, so a typical flow is:
+### Recommended operating mode: staged, not one marathon
+
+Institutional rigor (web research + draft→critique→revise + QA gate + 18 agents) makes a
+full `run` long (~1–2 hrs) and heavy on subscription usage, with real session-limit risk in
+one sitting. Every phase is independently runnable and resumable, so the durable workflow is:
 
 ```bash
+npm run os -- init https://acme.com   # also enforces the dead-URL guard
+npm run os -- market
 npm run os -- analyze https://acme.com
-npm run os -- strategy
+npm run os -- strategy                # strategy + financials (QA-gated) + funnel/seo/analytics
 npm run os -- content
 npm run os -- creative
 npm run os -- cro
+npm run os -- qa
+npm run os -- report                  # → data/projects/<slug>/assets/strategy-report.md
 ```
 
-…or just `npm run os -- run https://acme.com` to do all of it at once.
+…or `npm run os -- run https://acme.com` to do everything in one pass. If a session limit
+is hit mid-run, nothing is corrupted — just resume the affected stage once it resets.
+
+### Speed
+
+Independent agents run **in parallel** (e.g. market/competitor/audience after brand;
+financials/funnel/seo/creative after strategy), so a run finishes ~2.5× faster than
+serial with identical output. Tune with `MOS_CONCURRENCY` (default 3; set `1` to fully
+serialize if you hit subscription burst limits). The rendered crawl is cached to
+`crawl-pages.json`, so the CRO audit and re-runs don't re-render the site.
 
 ---
 

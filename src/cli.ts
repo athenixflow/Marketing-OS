@@ -38,22 +38,25 @@ Usage: npm run os -- <command> [args]
 
 Commands:
   init <url> [--name "Brand"]   Create/select a project and analyze the website
-  analyze <url>                 Brand + competitor + audience research
-  strategy                      Build 30/60/90 strategy (uses active project)
+  analyze <url>                 Brand + competitor + audience research (web-grounded)
+  market                        Market sizing, trends, benchmarks (web-grounded)
+  strategy                      Market + 30/60/90 strategy + financials + analytics
+  financials                    Unit economics, budget, projection, sensitivity
   content                       Content research + pillars + calendar + copy
   copy                          Rewrite captions, script, and blog from the calendar
   creative                      Creative platform + image prompts
   analytics                     Measurement plan + KPI dashboard
   cro [url]                     Conversion-rate-optimization audit
+  qa                            Cross-deliverable consistency review
+  report                        Compile the board-ready strategy report (+ sources)
   summary                       Re-synthesize the executive summary
-  run <url>                     FULL pipeline: research → strategy → content →
-                                creative → CRO → executive summary
-  memory <kind>                 Print stored memory (brand|audience|competitors|
-                                strategy|content-calendar|campaigns)
+  run <url>                     FULL institutional pipeline (all agents → report)
+  memory <kind>                 Print stored memory (brand|market|audience|competitors|
+                                strategy|financials|content-calendar|campaigns)
   projects                      List all projects
   help                          Show this help
 
-Setup: copy .env.example to .env and add ANTHROPIC_API_KEY.
+Setup: log into Claude Code (subscription) or set ANTHROPIC_API_KEY in .env.
 `;
 
 async function main() {
@@ -122,14 +125,36 @@ async function main() {
       break;
     }
 
+    case "market": {
+      const store = await openActive();
+      log.banner(`MarketingOS — market ${store.project.name}`);
+      await runTasks(store, `Size the market for ${store.project.name}`, [
+        { type: "market.research", goal: "Market sizing + benchmarks", assignedAgent: "market-research", priority: 10 },
+      ]);
+      done(store);
+      break;
+    }
+
     case "strategy": {
       const store = await openActive();
       log.banner(`MarketingOS — strategy ${store.project.name}`);
       await runTasks(store, `Build the marketing strategy for ${store.project.name}`, [
-        { type: "strategy.build", goal: "Build 30/60/90 strategy", assignedAgent: "marketing-strategy", priority: 10 },
-        { _ref: "f", type: "funnel.design", goal: "Design funnel", assignedAgent: "funnel-strategy", priority: 20 },
-        { _ref: "s", type: "seo.strategy", goal: "SEO strategy", assignedAgent: "seo-strategy", priority: 20 },
-        { type: "analytics.plan", goal: "Measurement plan", assignedAgent: "analytics", priority: 30 },
+        { _ref: "m", type: "market.research", goal: "Market sizing + benchmarks", assignedAgent: "market-research", priority: 5 },
+        { _ref: "st", type: "strategy.build", goal: "Build 30/60/90 strategy", assignedAgent: "marketing-strategy", priority: 10, dependsOn: ["@m"], qa: true },
+        { _ref: "fin", type: "finance.model", goal: "Unit economics & budget", assignedAgent: "financial", priority: 15, dependsOn: ["@st", "@m"], qa: true },
+        { type: "funnel.design", goal: "Design funnel", assignedAgent: "funnel-strategy", priority: 20, dependsOn: ["@st"] },
+        { type: "seo.strategy", goal: "SEO strategy", assignedAgent: "seo-strategy", priority: 20, dependsOn: ["@st"] },
+        { type: "analytics.plan", goal: "Measurement plan", assignedAgent: "analytics", priority: 30, dependsOn: ["@st", "@fin"] },
+      ]);
+      done(store);
+      break;
+    }
+
+    case "financials": {
+      const store = await openActive();
+      log.banner(`MarketingOS — financials ${store.project.name}`);
+      await runTasks(store, `Model the unit economics for ${store.project.name}`, [
+        { type: "finance.model", goal: "Unit economics & budget", assignedAgent: "financial", priority: 10, qa: true },
       ]);
       done(store);
       break;
@@ -202,6 +227,26 @@ async function main() {
       break;
     }
 
+    case "qa": {
+      const store = await openActive();
+      log.banner(`MarketingOS — QA review ${store.project.name}`);
+      await runTasks(store, `QA consistency review for ${store.project.name}`, [
+        { type: "qa.consistency", goal: "Cross-deliverable consistency review", assignedAgent: "qa", priority: 10 },
+      ]);
+      done(store);
+      break;
+    }
+
+    case "report": {
+      const store = await openActive();
+      log.banner(`MarketingOS — report ${store.project.name}`);
+      await runTasks(store, `Compile the board-ready report for ${store.project.name}`, [
+        { type: "report.build", goal: "Compile the board-ready strategy report", assignedAgent: "report-builder", priority: 10 },
+      ]);
+      done(store);
+      break;
+    }
+
     case "run": {
       const url = requireUrl(positionals[1]);
       const store = await MemoryStore.open(slugify(url), flags.name, url);
@@ -257,6 +302,13 @@ function done(store: MemoryStore) {
 }
 
 main().catch((err) => {
-  log.error("fatal", err?.stack ?? String(err));
+  // Known, actionable errors (aborted run, usage limit, auth) print cleanly;
+  // anything unexpected shows the stack for debugging.
+  const known = ["RunAbortedError", "LLMLimitError", "LLMNotConfiguredError"];
+  if (err?.name && known.includes(err.name)) {
+    log.error(err.name === "RunAbortedError" ? "aborted" : "error", err.message);
+  } else {
+    log.error("fatal", err?.stack ?? String(err));
+  }
   process.exitCode = 1;
 });

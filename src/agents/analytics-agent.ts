@@ -29,11 +29,16 @@ export class AnalyticsAgent extends BaseAgent {
   readonly systemPrompt =
     "You are the Analytics Agent. You design measurement frameworks: a north-star metric, a " +
     "KPI dashboard with data sources, and a prioritized experiment backlog.";
+  readonly rubric =
+    `- North-star metric truly captures value creation for this business model.\n` +
+    `- Each KPI has a precise definition, a target, and a real data source/tool.\n` +
+    `- Experiments are prioritized with a clear hypothesis and success metric.\n` +
+    `- The framework is consistent with the strategy's KPIs and the financial model.`;
 
   protected async handle(_task: Task, ctx: SharedContext): Promise<AgentResult> {
     const strategy = await ctx.memory.get<StrategyData>("strategy");
 
-    const plan = await this.thinkJSON(
+    const plan = await this.deepThinkJSON(
       `Build the measurement plan for this marketing strategy.
 POSITIONING: ${strategy.positioning ?? "n/a"}
 GROWTH STRATEGY: ${strategy.growthStrategy ?? "n/a"}

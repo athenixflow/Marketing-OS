@@ -3,9 +3,11 @@ import type { AgentName } from "./types.js";
 
 import { CmoAgent } from "../agents/cmo-agent.js";
 import { BrandIntelligenceAgent } from "../agents/brand-intelligence-agent.js";
+import { MarketResearchAgent } from "../agents/market-research-agent.js";
 import { CompetitorResearchAgent } from "../agents/competitor-research-agent.js";
 import { AudienceResearchAgent } from "../agents/audience-research-agent.js";
 import { MarketingStrategyAgent } from "../agents/marketing-strategy-agent.js";
+import { FinancialAgent } from "../agents/financial-agent.js";
 import { FunnelStrategyAgent } from "../agents/funnel-strategy-agent.js";
 import { SeoStrategyAgent } from "../agents/seo-strategy-agent.js";
 import { ContentResearchAgent } from "../agents/content-research-agent.js";
@@ -15,6 +17,8 @@ import { ImageGenerationAgent } from "../agents/image-generation-agent.js";
 import { CroAgent } from "../agents/cro-agent.js";
 import { CopywritingAgent } from "../agents/copywriting-agent.js";
 import { AnalyticsAgent } from "../agents/analytics-agent.js";
+import { QaAgent } from "../agents/qa-agent.js";
+import { ReportBuilderAgent } from "../agents/report-builder-agent.js";
 
 /**
  * The registry instantiates every agent once and exposes lookup by name. This
@@ -24,15 +28,19 @@ import { AnalyticsAgent } from "../agents/analytics-agent.js";
 export class AgentRegistry {
   private readonly agents = new Map<AgentName, BaseAgent>();
   readonly cmo: CmoAgent;
+  readonly qa: QaAgent;
 
   constructor() {
     this.cmo = new CmoAgent();
+    this.qa = new QaAgent();
     const all: BaseAgent[] = [
       this.cmo,
       new BrandIntelligenceAgent(),
+      new MarketResearchAgent(),
       new CompetitorResearchAgent(),
       new AudienceResearchAgent(),
       new MarketingStrategyAgent(),
+      new FinancialAgent(),
       new FunnelStrategyAgent(),
       new SeoStrategyAgent(),
       new ContentResearchAgent(),
@@ -42,6 +50,8 @@ export class AgentRegistry {
       new CroAgent(),
       new CopywritingAgent(),
       new AnalyticsAgent(),
+      this.qa,
+      new ReportBuilderAgent(),
     ];
     for (const a of all) this.agents.set(a.name, a);
   }

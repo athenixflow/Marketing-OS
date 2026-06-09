@@ -3,8 +3,16 @@ import { AgentRegistry } from "./registry.js";
 import { SharedContext } from "./context.js";
 import type { PlannedTask } from "../agents/cmo-agent.js";
 import type { MemoryStore } from "../memory/store.js";
-import type { AgentName, NewTask, Task } from "./types.js";
+import type { AgentName, AgentResult, NewTask, Task } from "./types.js";
 import { log } from "../utils/logger.js";
+
+/** Thrown to abort a run when its foundation (brand intelligence) fails. */
+export class RunAbortedError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "RunAbortedError";
+  }
+}
 
 /**
  * The orchestrator runs the department. It:
@@ -48,28 +56,56 @@ export class Orchestrator {
     return this.queue.add(spec);
   }
 
-  /** Drain the queue, then synthesize. Returns the final context. */
+  /**
+   * Drain the queue with a bounded concurrency pool, then synthesize. Independent
+   * tasks (deps satisfied) run in parallel up to MOS_CONCURRENCY; dependent tasks
+   * still wait for their predecessors, so outputs are identical to serial — only
+   * the wall-clock overlaps.
+   */
   async run(opts: { synthesize?: boolean } = {}): Promise<SharedContext> {
-    while (this.queue.hasPending()) {
-      const task = this.queue.next();
+    const concurrency = Math.max(1, Number(process.env.MOS_CONCURRENCY || 3));
+    const inFlight = new Map<string, Promise<void>>();
+    let aborted: Error | null = null;
 
-      if (!task) {
-        // Nothing runnable but tasks remain → unsatisfiable dependencies.
-        const blocked = this.queue.blockedTasks();
-        for (const b of blocked) {
-          b.status = "skipped";
-          log.warn("orchestrator", `skipped ${b.type} (blocked dependencies)`);
-          await this.ctx.memory.log({
-            level: "warn",
-            scope: "orchestrator",
-            message: `Skipped ${b.type} — dependencies could not be satisfied`,
+    while (true) {
+      // Fill open slots with currently-runnable tasks.
+      while (!aborted && inFlight.size < concurrency) {
+        const task = this.queue.next();
+        if (!task) break;
+        // Claim synchronously so the next next() won't re-pick this task.
+        task.status = "running";
+        const p = this.dispatch(task)
+          .catch((err) => {
+            aborted = aborted ?? (err instanceof Error ? err : new Error(String(err)));
+          })
+          .finally(() => {
+            inFlight.delete(task.id);
           });
-        }
+        inFlight.set(task.id, p);
+      }
+
+      if (inFlight.size > 0) {
+        // Wait for at least one task to finish, then try to schedule more.
+        await Promise.race(inFlight.values());
         continue;
       }
 
-      await this.dispatch(task);
+      // Nothing in flight. Either we're aborting, done, or blocked.
+      if (aborted) break;
+      const blocked = this.queue.blockedTasks();
+      if (blocked.length === 0) break; // all done
+      for (const b of blocked) {
+        b.status = "skipped";
+        log.warn("orchestrator", `skipped ${b.type} (blocked dependencies)`);
+        await this.ctx.memory.log({
+          level: "warn",
+          scope: "orchestrator",
+          message: `Skipped ${b.type} — dependencies could not be satisfied`,
+        });
+      }
     }
+
+    if (aborted) throw aborted; // RunAbortedError / LLMLimitError surface to the CLI
 
     if (opts.synthesize !== false) {
       await this.synthesize();
@@ -83,7 +119,13 @@ export class Orchestrator {
     log.step(task.assignedAgent, task.goal);
 
     try {
-      const result = await agent.run(task, this.ctx);
+      let result = await agent.run(task, this.ctx);
+
+      // QA gate: review flagged deliverables; one bounded re-run with fixes.
+      if (task.qa) {
+        result = await this.qaGate(task, agent, result);
+      }
+
       task.status = "done";
       task.result = result.output;
       this.ctx.message(task.assignedAgent, "system", task.id, result.summary);
@@ -106,6 +148,37 @@ export class Orchestrator {
         message: `Task failed: ${task.error}`,
         data: { taskId: task.id, type: task.type },
       });
+
+      // A usage/session-limit hit must stop the whole pool, not just fail one task.
+      if (err instanceof Error && err.name === "LLMLimitError") {
+        throw err;
+      }
+      // Brand intelligence is the foundation — abort the whole run if it fails
+      // (e.g. dead URL) rather than letting downstream agents hallucinate.
+      if (task.assignedAgent === "brand-intelligence") {
+        throw new RunAbortedError(task.error ?? "brand analysis failed");
+      }
+    }
+  }
+
+  /** Review a deliverable; if below threshold, re-run the agent once with notes. */
+  private async qaGate(task: Task, agent: ReturnType<AgentRegistry["get"]>, result: AgentResult): Promise<AgentResult> {
+    const threshold = Number(process.env.QA_THRESHOLD || 80);
+    try {
+      const review = await this.registry.qa.review(task.type, result.output, agent.rubric);
+      log.info("qa", `${task.type}: scored ${review.score}/100 (${review.pass ? "pass" : "needs work"})`);
+      if (review.score >= threshold || review.issues.length === 0) return result;
+
+      log.step("qa", `Re-running ${task.assignedAgent} with ${review.issues.length} required fixes`);
+      const revised = await agent.run(
+        { ...task, input: { ...task.input, revisionNotes: review.issues.map((i) => `- ${i}`).join("\n") } },
+        this.ctx
+      );
+      return revised;
+    } catch (err: any) {
+      if (err instanceof Error && err.name === "LLMLimitError") throw err;
+      log.warn("qa", `QA review skipped (${err?.message ?? err})`);
+      return result;
     }
   }
 

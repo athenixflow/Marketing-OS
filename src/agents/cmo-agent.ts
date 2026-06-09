@@ -37,25 +37,31 @@ export class CmoAgent extends BaseAgent {
   plan(url: string | undefined): PlannedTask[] {
     const tasks: Array<NewTask & { _ref: string }> = [
       { _ref: "brand", type: "brand.analyze", goal: "Analyze the website and build the brand profile", assignedAgent: "brand-intelligence", priority: 10, input: { url } },
-      { _ref: "competitors", type: "competitor.discover", goal: "Map the competitive landscape", assignedAgent: "competitor-research", priority: 20 },
-      { _ref: "audience", type: "audience.research", goal: "Define audience segments and personas", assignedAgent: "audience-research", priority: 20 },
-      { _ref: "strategy", type: "strategy.build", goal: "Build the 30/60/90-day marketing strategy", assignedAgent: "marketing-strategy", priority: 30 },
+      { _ref: "market", type: "market.research", goal: "Size the market and gather benchmarks (web-sourced)", assignedAgent: "market-research", priority: 20 },
+      { _ref: "competitors", type: "competitor.discover", goal: "Map the competitive landscape (web-sourced)", assignedAgent: "competitor-research", priority: 20 },
+      { _ref: "audience", type: "audience.research", goal: "Define audience segments and personas (web-sourced)", assignedAgent: "audience-research", priority: 20 },
+      { _ref: "strategy", type: "strategy.build", goal: "Build the 30/60/90-day marketing strategy", assignedAgent: "marketing-strategy", priority: 30, qa: true },
+      { _ref: "financials", type: "finance.model", goal: "Build the unit-economics & budget model", assignedAgent: "financial", priority: 35, qa: true },
       { _ref: "funnel", type: "funnel.design", goal: "Design the full-funnel customer journey", assignedAgent: "funnel-strategy", priority: 40 },
-      { _ref: "seo", type: "seo.strategy", goal: "Build the SEO strategy", assignedAgent: "seo-strategy", priority: 40 },
-      { _ref: "research", type: "content.research", goal: "Research content trends and topics", assignedAgent: "content-research", priority: 40 },
+      { _ref: "seo", type: "seo.strategy", goal: "Build the SEO strategy (web-sourced)", assignedAgent: "seo-strategy", priority: 40 },
+      { _ref: "research", type: "content.research", goal: "Research content trends and topics (web-sourced)", assignedAgent: "content-research", priority: 40 },
       { _ref: "content", type: "content.calendar", goal: "Create content pillars and calendar", assignedAgent: "content-creation", priority: 50 },
       { _ref: "copy", type: "copy.write", goal: "Write sample captions, a script, and a blog post", assignedAgent: "copywriting", priority: 60 },
       { _ref: "creative", type: "creative.develop", goal: "Develop the creative platform", assignedAgent: "creative-director", priority: 50 },
       { _ref: "image", type: "image.prompts", goal: "Produce ready-to-use image prompts", assignedAgent: "image-generation", priority: 60 },
       { _ref: "cro", type: "cro.audit", goal: "Audit the website for conversion blockers", assignedAgent: "cro", priority: 30, input: { url } },
-      { _ref: "analytics", type: "analytics.plan", goal: "Define the measurement and KPI framework", assignedAgent: "analytics", priority: 50 },
+      { _ref: "analytics", type: "analytics.plan", goal: "Define the measurement and KPI framework", assignedAgent: "analytics", priority: 55 },
+      { _ref: "qa", type: "qa.consistency", goal: "Cross-deliverable consistency review", assignedAgent: "qa", priority: 70 },
+      { _ref: "report", type: "report.build", goal: "Compile the board-ready strategy report", assignedAgent: "report-builder", priority: 80 },
     ];
 
     // Wire dependencies by reference name, then strip the helper field.
     const deps: Record<string, string[]> = {
+      market: ["brand"],
       competitors: ["brand"],
       audience: ["brand"],
-      strategy: ["brand", "competitors", "audience"],
+      strategy: ["brand", "market", "competitors", "audience"],
+      financials: ["strategy", "market"],
       funnel: ["strategy"],
       seo: ["strategy"],
       research: ["audience"],
@@ -63,8 +69,10 @@ export class CmoAgent extends BaseAgent {
       copy: ["content"],
       creative: ["strategy", "audience"],
       image: ["creative"],
-      analytics: ["strategy"],
+      analytics: ["strategy", "financials"],
       cro: ["brand"],
+      qa: ["strategy", "financials", "content", "creative", "analytics"],
+      report: ["strategy", "financials", "market", "audience", "competitors", "content", "creative", "cro", "analytics", "qa"],
     };
 
     // Map _ref -> task index is implicit; orchestrator resolves real ids after add.

@@ -7,9 +7,11 @@
 export type AgentName =
   | "cmo"
   | "brand-intelligence"
+  | "market-research"
   | "competitor-research"
   | "audience-research"
   | "marketing-strategy"
+  | "financial"
   | "funnel-strategy"
   | "seo-strategy"
   | "content-research"
@@ -18,7 +20,9 @@ export type AgentName =
   | "image-generation"
   | "cro"
   | "copywriting"
-  | "analytics";
+  | "analytics"
+  | "qa"
+  | "report-builder";
 
 /** Priority for task ordering. Lower number = runs sooner. */
 export type Priority = number;
@@ -39,6 +43,8 @@ export interface Task {
   dependsOn: string[];
   /** Arbitrary structured input for the agent. */
   input?: Record<string, unknown>;
+  /** When true, the orchestrator runs the QA gate on this task's output. */
+  qa?: boolean;
   status: TaskStatus;
   /** Result produced by the agent, once done. */
   result?: unknown;
@@ -75,6 +81,17 @@ export interface NewTask {
   priority?: Priority;
   dependsOn?: string[];
   input?: Record<string, unknown>;
+  /** Run the QA gate on this task's output. */
+  qa?: boolean;
+}
+
+/** Result of a QA/Managing-Director review of a deliverable. */
+export interface QAReview {
+  /** 0-100 quality score against the institutional rubric. */
+  score: number;
+  pass: boolean;
+  /** Concrete, required fixes when the deliverable falls short. */
+  issues: string[];
 }
 
 /** A project is one brand/website we are doing marketing for. */
