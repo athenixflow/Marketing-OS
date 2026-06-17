@@ -17,7 +17,7 @@ import type {
 export class ReportBuilderAgent extends BaseAgent {
   readonly name: AgentName = "report-builder";
   readonly title = "Report Builder Agent";
-  readonly tier: ModelTier = "opus";
+  readonly tier: ModelTier = "sonnet";
   readonly systemPrompt =
     "You are an engagement lead writing the executive summary of a board-ready marketing " +
     "strategy report. You are concise, decisive, and evidence-led.";

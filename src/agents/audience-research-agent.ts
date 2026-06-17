@@ -56,7 +56,7 @@ Find who actually buys this category: demographics, behaviors, motivations, wher
 buyer personas (demographic, psychographic, buying triggers) for ${brand.name}. Populate
 "sources" from the research; set confidence honestly.`,
       audienceSchema,
-      { temperature: 0.4, maxTokens: 5000 }
+      { temperature: 0.4, maxTokens: 5000, cache: ctx.memory.researchCache() }
     );
 
     const result: AudienceData = {

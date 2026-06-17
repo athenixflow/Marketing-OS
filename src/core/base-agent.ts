@@ -7,6 +7,7 @@ import {
   type ModelTier,
   type CompleteOpts,
   type Source,
+  type ResearchCache,
 } from "./llm.js";
 import type { SharedContext } from "./context.js";
 import type { AgentName, AgentResult, Task } from "./types.js";
@@ -126,9 +127,13 @@ Produce the final, improved version that resolves every fix. Return it as JSON.`
     researchPrompt: string,
     structurePrompt: string,
     schema: S,
-    opts: CompleteOpts = {}
+    opts: CompleteOpts & { cache?: ResearchCache } = {}
   ): Promise<{ data: z.infer<S>; sources: Source[]; grounded: boolean }> {
-    const r = await research(researchPrompt, { tier: this.tier, system: this.systemPrompt });
+    const r = await research(researchPrompt, {
+      tier: this.tier,
+      system: this.systemPrompt,
+      cache: opts.cache,
+    });
     const data = await this.deepThinkJSON(
       `${structurePrompt}
 

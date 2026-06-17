@@ -30,6 +30,8 @@ const PRIORITY_HINTS = /(about|product|service|pricing|plans|features|solutions|
  *
  * The public shape is unchanged, so the scraper/extractor/agents are unaffected.
  */
+const RENDER_CONCURRENCY = Math.max(1, Number(process.env.CRAWL_CONCURRENCY || 4));
+
 export async function crawl(startUrl: string): Promise<CrawlResult> {
   const origin = new URL(startUrl).origin;
   const seen = new Set<string>();
@@ -38,17 +40,13 @@ export async function crawl(startUrl: string): Promise<CrawlResult> {
 
   // Try to bring up a headless browser; fall back to HTTP if unavailable.
   let browser: Browser | null = null;
-  let page: Page | null = null;
   let mode: "render" | "http" = "http";
 
   if (RENDER) {
     try {
       browser = await chromium.launch({ headless: true });
-      page = await browser.newPage({
-        userAgent: "MarketingOS-Bot/1.0 (+local research)",
-      });
       mode = "render";
-      log.info("crawler", "headless Chromium ready — rendering pages");
+      log.info("crawler", `headless Chromium ready — rendering up to ${RENDER_CONCURRENCY} pages at a time`);
     } catch (err: any) {
       log.warn(
         "crawler",
@@ -59,32 +57,47 @@ export async function crawl(startUrl: string): Promise<CrawlResult> {
   }
 
   try {
+    // Process the BFS frontier in concurrent batches: render/fetch a batch of
+    // pages in parallel, then expand the queue with their links. Same content
+    // as the old one-at-a-time loop, just overlapped.
     while (queue.length > 0 && pages.length < MAX_PAGES) {
-      const url = queue.shift()!;
-      if (seen.has(url)) continue;
-      seen.add(url);
+      const slots = Math.min(RENDER_CONCURRENCY, MAX_PAGES - pages.length);
+      const batch: string[] = [];
+      while (queue.length > 0 && batch.length < slots) {
+        const url = queue.shift()!;
+        if (seen.has(url)) continue;
+        seen.add(url);
+        batch.push(url);
+      }
+      if (batch.length === 0) continue;
 
-      const html = page ? await renderHtml(page, url) : await fetchHtml(url);
-      if (!html) continue;
+      const results = await Promise.all(
+        batch.map(async (url) => {
+          const html = browser ? await renderOne(browser, url) : await fetchHtml(url);
+          return html ? { url, scraped: scrape(url, html) } : null;
+        })
+      );
 
-      const scraped = scrape(url, html);
-      pages.push(scraped);
-      log.info("crawler", `${mode === "render" ? "rendered" : "fetched"} ${url} (${scraped.textLength} chars)`);
+      for (const r of results) {
+        if (!r || pages.length >= MAX_PAGES) continue;
+        pages.push(r.scraped);
+        log.info("crawler", `${mode === "render" ? "rendered" : "fetched"} ${r.url} (${r.scraped.textLength} chars)`);
 
-      // Enqueue same-origin links, priority pages first.
-      const candidates = scraped.links
-        .map((l) => safeResolve(origin, url, l.href))
-        .filter((u): u is string => Boolean(u))
-        .filter((u) => u.startsWith(origin))
-        .map(normalize)
-        .filter((u) => !seen.has(u));
+        // Enqueue same-origin links, priority pages first.
+        const candidates = r.scraped.links
+          .map((l) => safeResolve(origin, r.url, l.href))
+          .filter((u): u is string => Boolean(u))
+          .filter((u) => u.startsWith(origin))
+          .map(normalize)
+          .filter((u) => !seen.has(u));
 
-      const prioritized = [
-        ...candidates.filter((u) => PRIORITY_HINTS.test(u)),
-        ...candidates.filter((u) => !PRIORITY_HINTS.test(u)),
-      ];
-      for (const u of prioritized) {
-        if (!queue.includes(u)) queue.push(u);
+        const prioritized = [
+          ...candidates.filter((u) => PRIORITY_HINTS.test(u)),
+          ...candidates.filter((u) => !PRIORITY_HINTS.test(u)),
+        ];
+        for (const u of prioritized) {
+          if (!queue.includes(u)) queue.push(u);
+        }
       }
     }
   } finally {
@@ -100,9 +113,11 @@ export async function crawl(startUrl: string): Promise<CrawlResult> {
   return { startUrl, pages, lowYield, mode };
 }
 
-/** Render a page in the headless browser and return its full DOM HTML. */
-async function renderHtml(page: Page, url: string): Promise<string | null> {
+/** Render a single URL on its own browser page and return the full DOM HTML. */
+async function renderOne(browser: Browser, url: string): Promise<string | null> {
+  let page: Page | null = null;
   try {
+    page = await browser.newPage({ userAgent: "MarketingOS-Bot/1.0 (+local research)" });
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: TIMEOUT_MS });
     // Best-effort wait for SPA network to settle; never let it hang the crawl.
     await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
@@ -110,6 +125,8 @@ async function renderHtml(page: Page, url: string): Promise<string | null> {
   } catch (err: any) {
     log.warn("crawler", `render failed ${url}: ${err?.message ?? err}`);
     return null;
+  } finally {
+    await page?.close().catch(() => {});
   }
 }
 

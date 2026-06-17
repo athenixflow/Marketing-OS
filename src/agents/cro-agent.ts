@@ -12,7 +12,7 @@ import type { BrandData } from "../memory/schema.js";
 export class CroAgent extends BaseAgent {
   readonly name: AgentName = "cro";
   readonly title = "CRO Agent";
-  readonly tier: ModelTier = "opus";
+  readonly tier: ModelTier = "sonnet";
   readonly systemPrompt =
     "You are the CRO Agent. You audit websites for conversion blockers and produce " +
     "prioritized, evidence-based optimization recommendations.";

@@ -4,6 +4,7 @@ import { SharedContext } from "./context.js";
 import type { PlannedTask } from "../agents/cmo-agent.js";
 import type { MemoryStore } from "../memory/store.js";
 import type { AgentName, AgentResult, NewTask, Task } from "./types.js";
+import { getProfile } from "./profile.js";
 import { log } from "../utils/logger.js";
 
 /** Thrown to abort a run when its foundation (brand intelligence) fails. */
@@ -63,7 +64,7 @@ export class Orchestrator {
    * the wall-clock overlaps.
    */
   async run(opts: { synthesize?: boolean } = {}): Promise<SharedContext> {
-    const concurrency = Math.max(1, Number(process.env.MOS_CONCURRENCY || 3));
+    const concurrency = getProfile().concurrency;
     const inFlight = new Map<string, Promise<void>>();
     let aborted: Error | null = null;
 

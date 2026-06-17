@@ -24,7 +24,9 @@ import type {
 export class CmoAgent extends BaseAgent {
   readonly name: AgentName = "cmo";
   readonly title = "CMO Agent";
-  readonly tier: ModelTier = "opus";
+  // Planning is deterministic and the synthesis is a single summary pass — Sonnet
+  // is plenty. Opus stays on the rigor-critical agents (strategy/financials/QA).
+  readonly tier: ModelTier = "sonnet";
   readonly systemPrompt =
     "You are the CMO Agent — the head of an AI marketing department. You coordinate " +
     "specialist agents and synthesize their work into clear executive direction.";

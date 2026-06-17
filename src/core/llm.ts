@@ -1,6 +1,9 @@
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { createHash } from "node:crypto";
 import type { z } from "zod";
+import { getProfile } from "./profile.js";
+import { log } from "../utils/logger.js";
 
 /**
  * LLM layer built on the Claude Agent SDK.
@@ -66,6 +69,16 @@ export interface ResearchResult {
   grounded: boolean;
 }
 
+/** Disk-backed cache so re-running a grounded stage doesn't re-browse the web. */
+export interface ResearchCache {
+  get(key: string): Promise<ResearchResult | null>;
+  set(key: string, value: ResearchResult): Promise<void>;
+}
+
+function cacheEnabled(): boolean {
+  return !/^(1|true|yes)$/i.test(process.env.RESEARCH_NOCACHE ?? "0");
+}
+
 /** Whether web grounding is enabled (default on; RESEARCH_WEB=0 disables). */
 export function researchEnabled(): boolean {
   return !/^(0|false|no)$/i.test(process.env.RESEARCH_WEB ?? "1");
@@ -77,29 +90,56 @@ export function researchEnabled(): boolean {
  * to an ungrounded completion (empty sources, grounded=false) if web tools are
  * disabled or unavailable — callers should lower confidence accordingly.
  */
-export async function research(prompt: string, opts: CompleteOpts = {}): Promise<ResearchResult> {
+export async function research(
+  prompt: string,
+  opts: CompleteOpts & { cache?: ResearchCache } = {}
+): Promise<ResearchResult> {
+  const turns = getProfile().researchTurns;
+
+  // Cache hit → return instantly, no browsing (keyed by prompt + depth + digest
+  // format version, so changing the research output shape invalidates old entries).
+  const key = createHash("sha1").update(`${prompt}::turns=${turns}::digest-v2`).digest("hex").slice(0, 16);
+  if (opts.cache && cacheEnabled()) {
+    const hit = await opts.cache.get(key);
+    if (hit) {
+      log.info("research", `cache hit (${hit.sources.length} sources) — skipping web search`);
+      return hit;
+    }
+  }
+
   const instruction = `${prompt}
 
-Use web search to gather CURRENT, verifiable evidence. Prefer reputable, primary
-sources. After your findings, end your response with a section formatted exactly:
+Use web search to gather CURRENT, verifiable evidence from reputable, primary sources.
+
+Then output a CONCISE EVIDENCE DIGEST — not a narrative essay. Format:
+- A bulleted list of specific, verified facts and figures relevant to the request,
+  each on one line with the key number/claim and a bracketed source tag, e.g.
+  "- Nigeria dairy market ≈ US$1.06B (2025) [EMR]".
+- Note material conflicts/uncertainty in <=2 short bullets.
+- No preamble, no analysis, no recommendations — just the evidence the downstream
+  analyst needs. Be comprehensive on facts but terse in prose.
+
+End with a sources section formatted exactly:
 
 SOURCES:
 - <title> | <url>
 - <title> | <url>
 
-Only list sources you actually used. If you could not verify a claim, say so.`;
+Only list sources you actually used. If you could not verify a claim, mark it [unverified].`;
 
   if (researchEnabled()) {
     try {
       const text = await runQuery(instruction, {
         model: MODEL_IDS[opts.tier ?? "sonnet"],
         systemPrompt: opts.system,
-        maxTurns: 8,
+        maxTurns: turns,
         tools: ["WebSearch", "WebFetch"],
         allowedTools: ["WebSearch", "WebFetch"],
         permissionMode: "bypassPermissions",
       });
-      return { text, sources: parseSources(text), grounded: true };
+      const result: ResearchResult = { text, sources: parseSources(text), grounded: true };
+      if (opts.cache && cacheEnabled()) await opts.cache.set(key, result);
+      return result;
     } catch (err) {
       if (err instanceof LLMLimitError) throw err; // limits must surface
       // Web tools unavailable/blocked — degrade gracefully to model-only.
@@ -127,11 +167,25 @@ ${draft}`,
   );
 }
 
+let fastStateLogged = false;
+
 /** Shared Agent SDK call: streams to the terminal result message. */
 async function runQuery(prompt: string, options: Options): Promise<string> {
+  // Fast mode = same model, faster output. Applied to every call when the
+  // active profile enables it; degrades silently if the session can't honor it.
+  if (getProfile().fastMode) {
+    options = { ...options, settings: { ...(asSettings(options.settings)), fastMode: true } };
+  }
+
   try {
     for await (const message of query({ prompt, options })) {
       if (message.type === "result") {
+        // Surface whether fast mode actually engaged, once per process.
+        const state = (message as any).fast_mode_state as string | undefined;
+        if (state && !fastStateLogged) {
+          fastStateLogged = true;
+          log.info("llm", `fast_mode_state: ${state}`);
+        }
         if (message.subtype === "success") {
           const text = message.result.trim();
           // The subscription can surface a usage/session-limit notice as ordinary
@@ -151,6 +205,11 @@ async function runQuery(prompt: string, options: Options): Promise<string> {
   } catch (err: any) {
     throw wrapSdkError(err);
   }
+}
+
+/** Only object-form settings can be merged; a settings file path is left as-is. */
+function asSettings(s: Options["settings"]): Record<string, unknown> {
+  return s && typeof s === "object" ? (s as Record<string, unknown>) : {};
 }
 
 /** Extract "- title | url" lines from the model's SOURCES: block. */

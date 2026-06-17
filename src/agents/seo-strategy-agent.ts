@@ -50,7 +50,7 @@ Find what this audience actually searches for, competitor content angles, and hi
       `Build an SEO strategy: pillar topics, keyword clusters by intent (with rough demand where
 known), on-page recommendations, content gaps, and technical notes. Populate "sources".`,
       seoSchema,
-      { temperature: 0.4, maxTokens: 5000 }
+      { temperature: 0.4, maxTokens: 5000, cache: ctx.memory.researchCache() }
     );
 
     const asset = await ctx.memory.recordAsset("seo-strategy.json", JSON.stringify({ ...seo, sources: seo.sources?.length ? seo.sources : sources }, null, 2));

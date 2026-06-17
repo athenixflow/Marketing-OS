@@ -9,7 +9,9 @@ import type { BrandData, MarketData } from "../memory/schema.js";
 export class MarketResearchAgent extends BaseAgent {
   readonly name: AgentName = "market-research";
   readonly title = "Market Research / Data Analyst Agent";
-  readonly tier: ModelTier = "opus";
+  // Sonnet for structuring (≈2x faster); the research evidence + critique loop
+  // carry the rigor. Opus is reserved for strategy/financials/QA.
+  readonly tier: ModelTier = "sonnet";
   readonly grounded = true;
   readonly systemPrompt =
     "You are a market research analyst at a top strategy firm. You size markets " +
@@ -35,7 +37,7 @@ CAC, ROAS, retention) for this kind of business.`,
       `Produce a rigorous market analysis for ${brand.name} (category context: ${category}).
 Show how SAM and SOM derive from TAM. Flag any unverifiable figure as an assumption.`,
       marketSchema,
-      { temperature: 0.3, maxTokens: 5000 }
+      { temperature: 0.3, maxTokens: 5000, cache: ctx.memory.researchCache() }
     );
 
     const market: MarketData = { ...data };

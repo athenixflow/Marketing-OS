@@ -105,11 +105,31 @@ is hit mid-run, nothing is corrupted — just resume the affected stage once it 
 
 ### Speed
 
-Independent agents run **in parallel** (e.g. market/competitor/audience after brand;
-financials/funnel/seo/creative after strategy), so a run finishes ~2.5× faster than
-serial with identical output. Tune with `MOS_CONCURRENCY` (default 3; set `1` to fully
-serialize if you hit subscription burst limits). The rendered crawl is cached to
-`crawl-pages.json`, so the CRO audit and re-runs don't re-render the site.
+Performance profiles (`MOS_PROFILE`) tune how fast a run goes **without changing any
+agent's reasoning, prompts, model tiers, or the draft→critique→revise quality loop**:
+
+| Profile | Fast mode | Concurrency | Research turns | Notes |
+|---|---|---|---|---|
+| `deep` | off | 3 | 8 | Original behavior |
+| `balanced` *(default)* | **on** | 5 | 8 | Same reasoning, just faster |
+| `fast` | on | 6 | 4 | Opt-in; trims web-browse depth |
+
+Model tiers are matched to the work: the **rigor-critical agents — Marketing Strategy,
+Financial/Unit-Economics, and QA — run on Opus**, while research, structuring, CRO, and
+report assembly run on **Sonnet** (≈2× faster; the web evidence + draft→critique→revise
+loop carry the rigor). Override per-agent in the agent files if you want all-Opus.
+
+The other speedups are pure efficiency, not quality cuts:
+- **Fast mode** — the same Claude model with faster output, applied to every call.
+- **Parallelism** — independent agents overlap (market/competitor/audience after brand;
+  financials/funnel/seo/creative after strategy).
+- **Parallel crawl** — pages render concurrently (`CRAWL_CONCURRENCY`, default 4).
+- **Caches** — the rendered crawl (`crawl-pages.json`) and web-research findings
+  (`research-cache/`) are reused, so re-running a stage is near-instant.
+
+Fine-tune any knob via env (`MOS_CONCURRENCY`, `FAST_MODE`, `RESEARCH_TURNS`,
+`CRAWL_CONCURRENCY`, `RESEARCH_NOCACHE`). Use `MOS_PROFILE=deep MOS_CONCURRENCY=1` for the
+most conservative, fully-serial behavior.
 
 ---
 

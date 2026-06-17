@@ -33,7 +33,7 @@ Search for actual competing brands/companies, their websites, positioning, and r
 positioning, strengths, weaknesses, and how ${brand.name} can differentiate. Identify the
 clearest ownable market gap. Populate "sources" from the research and set confidence honestly.`,
       discoverySchema,
-      { temperature: 0.4, maxTokens: 5000 }
+      { temperature: 0.4, maxTokens: 5000, cache: ctx.memory.researchCache() }
     );
 
     const result: CompetitorData = {

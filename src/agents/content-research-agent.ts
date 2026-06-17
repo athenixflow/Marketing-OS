@@ -41,7 +41,7 @@ Find current trends, formats, and hook patterns performing in this space.`,
       `Produce current content trends, high-potential topic ideas, formats that perform, and
 proven hook angles for this audience. Populate "sources".`,
       researchSchema,
-      { temperature: 0.6, maxTokens: 4000 }
+      { temperature: 0.6, maxTokens: 4000, cache: ctx.memory.researchCache() }
     );
 
     // Shared on the blackboard so the Content Creation Agent can build on it.

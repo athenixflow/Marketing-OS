@@ -138,6 +138,19 @@ export class MemoryStore {
     return readJson<T>(path.join(this.dir, "assets", name), fallback);
   }
 
+  /**
+   * A disk-backed research cache for this project (data/.../research-cache/).
+   * Lets a re-run of a grounded stage reuse prior web findings instead of
+   * browsing again. Shaped to satisfy llm.ResearchCache structurally.
+   */
+  researchCache() {
+    const dir = path.join(this.dir, "research-cache");
+    return {
+      get: <T>(key: string): Promise<T | null> => readJson<T | null>(path.join(dir, `${key}.json`), null),
+      set: <T>(key: string, value: T): Promise<void> => writeJson(path.join(dir, `${key}.json`), value),
+    };
+  }
+
   /** Append one structured event to the project run-log (JSONL audit trail). */
   async log(event: Omit<LogEvent, "at">): Promise<void> {
     const full: LogEvent = { ...event, at: new Date().toISOString() };
